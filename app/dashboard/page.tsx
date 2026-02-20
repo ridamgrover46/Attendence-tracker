@@ -2,26 +2,25 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
-import { Plus, LogOut, TrendingUp, TrendingDown } from 'lucide-react'
+import { Plus, LogOut, BookOpen, FileText, AlertCircle, TrendingUp } from 'lucide-react'
+import { supabase, Subject, Assignment, SyllabusTopic } from '@/lib/supabase'
+import toast from 'react-hot-toast'
 import SubjectCard from '@/components/SubjectCard'
 import AddSubjectModal from '@/components/AddSubjectModal'
-import toast from 'react-hot-toast'
-
-interface Subject {
-  id: string
-  user_id: string
-  subject_name: string
-  total_lectures: number
-  attended_lectures: number
-  created_at: string
-}
 
 export default function DashboardPage() {
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [loading, setLoading] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
   const [user, setUser] = useState<any>(null)
+  const [stats, setStats] = useState({
+    totalSubjects: 0,
+    totalAssignments: 0,
+    pendingAssignments: 0,
+    overdueAssignments: 0,
+    totalSyllabusTopics: 0,
+    completedSyllabusTopics: 0
+  })
   const router = useRouter()
 
   useEffect(() => {
@@ -29,6 +28,70 @@ export default function DashboardPage() {
     fetchUser()
     fetchSubjects()
   }, [])
+
+  useEffect(() => {
+    fetchDashboardStats()
+  }, [user])
+
+  const fetchDashboardStats = async () => {
+    if (!user) return
+
+    try {
+      // Get all subjects for the user
+      const { data: subjectsData } = await supabase
+        .from('subjects')
+        .select('id')
+        .eq('user_id', user.id)
+
+      const subjectIds = subjectsData?.map(s => s.id) || []
+
+      if (subjectIds.length === 0) {
+        setStats({
+          totalSubjects: 0,
+          totalAssignments: 0,
+          pendingAssignments: 0,
+          overdueAssignments: 0,
+          totalSyllabusTopics: 0,
+          completedSyllabusTopics: 0
+        })
+        return
+      }
+
+      // Get assignments stats
+      const { data: assignmentsData } = await supabase
+        .from('assignments')
+        .select('status, deadline')
+        .in('subject_id', subjectIds)
+
+      // Get syllabus topics stats
+      const { data: syllabusData } = await supabase
+        .from('syllabus_topics')
+        .select('is_completed')
+        .in('subject_id', subjectIds)
+
+      const today = new Date()
+      const pendingAssignments = assignmentsData?.filter(a => 
+        a.status === 'pending' && new Date(a.deadline) >= today
+      ) || []
+      
+      const overdueAssignments = assignmentsData?.filter(a => 
+        a.status === 'pending' && new Date(a.deadline) < today
+      ) || []
+
+      const completedTopics = syllabusData?.filter(t => t.is_completed) || []
+
+      setStats({
+        totalSubjects: subjectIds.length,
+        totalAssignments: assignmentsData?.length || 0,
+        pendingAssignments: pendingAssignments.length,
+        overdueAssignments: overdueAssignments.length,
+        totalSyllabusTopics: syllabusData?.length || 0,
+        completedSyllabusTopics: completedTopics.length
+      })
+    } catch (error) {
+      console.error('Error fetching dashboard stats:', error)
+    }
+  }
 
   const checkAuth = async () => {
     const { data: { session } } = await supabase.auth.getSession()
@@ -134,61 +197,155 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-8">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+    <div className="min-h-screen bg-white">
+      {/* Header */}
+      <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Attendance Tracker</h1>
-              <p className="text-gray-600 mt-2">Manage your subject attendance efficiently</p>
+              <h1 className="text-2xl font-bold">Dashboard</h1>
+              <p className="text-blue-100">Manage your subjects and track progress</p>
             </div>
-            <div className="flex items-center space-x-4">
-              <div className="text-center bg-gray-50 rounded-lg px-4 py-3">
-                <p className="text-sm text-gray-600">Overall Attendance</p>
-                <p className={`text-2xl font-bold ${calculateOverallAttendance() >= 75 ? 'text-green-600' : calculateOverallAttendance() >= 60 ? 'text-yellow-600' : 'text-red-600'}`}>
-                  {calculateOverallAttendance()}%
+            <button
+              onClick={handleLogout}
+              className="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
+            >
+              <LogOut className="h-4 w-4" />
+              <span className="hidden sm:inline">Logout</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Stats Summary Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+          <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl p-6 text-white">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-blue-100 text-sm font-medium">Total Subjects</p>
+                <p className="text-3xl font-bold">{stats.totalSubjects}</p>
+              </div>
+              <BookOpen className="h-8 w-8 text-blue-200" />
+            </div>
+          </div>
+
+          <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-xl p-6 text-white">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-green-100 text-sm font-medium">Total Assignments</p>
+                <p className="text-3xl font-bold">{stats.totalAssignments}</p>
+              </div>
+              <FileText className="h-8 w-8 text-green-200" />
+            </div>
+          </div>
+
+          <div className="bg-gradient-to-r from-yellow-500 to-yellow-600 rounded-xl p-6 text-white">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-yellow-100 text-sm font-medium">Pending Assignments</p>
+                <p className="text-3xl font-bold">{stats.pendingAssignments}</p>
+              </div>
+              <TrendingUp className="h-8 w-8 text-yellow-200" />
+            </div>
+          </div>
+
+          <div className="bg-gradient-to-r from-red-500 to-red-600 rounded-xl p-6 text-white">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-red-100 text-sm font-medium">Overdue Assignments</p>
+                <p className="text-3xl font-bold">{stats.overdueAssignments}</p>
+              </div>
+              <AlertCircle className="h-8 w-8 text-red-200" />
+            </div>
+          </div>
+
+          <div className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-xl p-6 text-white">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-purple-100 text-sm font-medium">Syllabus Progress</p>
+                <p className="text-3xl font-bold">
+                  {stats.totalSyllabusTopics > 0 
+                    ? Math.round((stats.completedSyllabusTopics / stats.totalSyllabusTopics) * 100)
+                    : 0}%
                 </p>
               </div>
-              <button
-                onClick={() => setShowAddModal(true)}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-lg flex items-center space-x-2 transition-colors shadow-sm"
-              >
-                <Plus className="h-5 w-5" />
-                <span className="hidden sm:inline">Add Subject</span>
-              </button>
-              <button
-                onClick={handleLogout}
-                className="bg-red-600 hover:bg-red-700 text-white px-4 py-3 rounded-lg flex items-center space-x-2 transition-colors shadow-sm"
-              >
-                <LogOut className="h-5 w-5" />
-                <span className="hidden sm:inline">Logout</span>
-              </button>
+              <BookOpen className="h-8 w-8 text-purple-200" />
+            </div>
+          </div>
+
+          <div className="bg-gradient-to-r from-indigo-500 to-indigo-600 rounded-xl p-6 text-white">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-indigo-100 text-sm font-medium">Completed Topics</p>
+                <p className="text-3xl font-bold">{stats.completedSyllabusTopics}</p>
+              </div>
+              <TrendingUp className="h-8 w-8 text-indigo-200" />
             </div>
           </div>
         </div>
 
-        {subjects.length === 0 ? (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
-            <div className="bg-gray-100 rounded-full h-24 w-24 mx-auto mb-6 flex items-center justify-center">
-              <TrendingUp className="h-12 w-12 text-gray-400" />
+        {/* Overall Attendance */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-8">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Overall Attendance</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="text-center">
+              <div className="text-3xl font-bold text-blue-600">
+                {subjects.length > 0 
+                  ? Math.round(
+                      subjects.reduce((acc, subject) => acc + (subject.total_lectures > 0 
+                        ? (subject.attended_lectures / subject.total_lectures) * 100 
+                        : 0), 0) / subjects.length
+                    )
+                  : 0}%
+              </div>
+              <p className="text-sm text-gray-600">Average Attendance</p>
             </div>
-            <h3 className="text-xl font-semibold text-gray-900 mb-3">No subjects yet</h3>
-            <p className="text-gray-600 mb-6 max-w-md mx-auto">
-              Start tracking your attendance by adding your first subject. Monitor your progress and stay on top of your academic goals.
-            </p>
+            <div className="text-center">
+              <div className="text-3xl font-bold text-green-600">
+                {subjects.reduce((acc, subject) => acc + subject.attended_lectures, 0)}
+              </div>
+              <p className="text-sm text-gray-600">Total Attended</p>
+            </div>
+            <div className="text-center">
+              <div className="text-3xl font-bold text-gray-600">
+                {subjects.reduce((acc, subject) => acc + subject.total_lectures, 0)}
+              </div>
+              <p className="text-sm text-gray-600">Total Lectures</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Add Subject Button */}
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-xl font-semibold text-gray-900">Your Subjects</h2>
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
+          >
+            <Plus className="h-4 w-4" />
+            <span className="text-sm font-medium">Add Subject</span>
+          </button>
+        </div>
+
+        {/* Subjects Grid */}
+        {subjects.length === 0 ? (
+          <div className="text-center py-12">
+            <BookOpen className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No subjects yet</h3>
+            <p className="text-gray-600 mb-6">Add your first subject to start tracking attendance</p>
             <button
               onClick={() => setShowAddModal(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg inline-flex items-center space-x-2 transition-colors shadow-sm"
+              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg transition-colors"
             >
-              <Plus className="h-5 w-5" />
-              <span>Add Your First Subject</span>
+              Add Your First Subject
             </button>
           </div>
         ) : (
@@ -205,10 +362,11 @@ export default function DashboardPage() {
         )}
       </div>
 
+      {/* Add Subject Modal */}
       {showAddModal && (
         <AddSubjectModal
           onClose={() => setShowAddModal(false)}
-          onAdd={handleAddSubject}
+          onSubjectAdded={handleAddSubject}
         />
       )}
     </div>

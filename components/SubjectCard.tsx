@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { Trash2, Plus, Minus, TrendingUp, TrendingDown, Edit2, X } from 'lucide-react'
+import { Trash2, Plus, Minus, TrendingUp, TrendingDown, Edit2, X, BookOpen, ExternalLink } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
 
 interface Subject {
@@ -25,6 +26,7 @@ export default function SubjectCard({ subject, onUpdate, onDelete }: SubjectCard
   const [isPredicting, setIsPredicting] = useState(false)
   const [predictN, setPredictN] = useState(1)
   const [predictionType, setPredictionType] = useState<'attend' | 'miss'>('attend')
+  const router = useRouter()
 
   const attendancePercentage = subject.total_lectures > 0 
     ? Math.round((subject.attended_lectures / subject.total_lectures) * 100)
@@ -164,6 +166,13 @@ export default function SubjectCard({ subject, onUpdate, onDelete }: SubjectCard
         >
           <Minus className="h-4 w-4" />
           <span className="text-sm font-medium">Missed</span>
+        </button>
+        <button
+          onClick={() => router.push(`/dashboard/subject/${subject.id}`)}
+          className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-3 rounded-lg flex items-center justify-center space-x-2 transition-colors shadow-sm"
+        >
+          <ExternalLink className="h-4 w-4" />
+          <span className="text-sm font-medium hidden sm:inline">Details</span>
         </button>
       </div>
 

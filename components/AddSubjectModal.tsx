@@ -5,10 +5,10 @@ import { X } from 'lucide-react'
 
 interface AddSubjectModalProps {
   onClose: () => void
-  onAdd: (subject: Omit<any, 'id' | 'user_id' | 'created_at'>) => void
+  onSubjectAdded: (subject: Omit<any, 'id' | 'user_id' | 'created_at'>) => void
 }
 
-export default function AddSubjectModal({ onClose, onAdd }: AddSubjectModalProps) {
+export default function AddSubjectModal({ onClose, onSubjectAdded }: AddSubjectModalProps) {
   const [subjectName, setSubjectName] = useState('')
   const [totalLectures, setTotalLectures] = useState('')
   const [attendedLectures, setAttendedLectures] = useState('')
@@ -30,7 +30,7 @@ export default function AddSubjectModal({ onClose, onAdd }: AddSubjectModalProps
 
     setLoading(true)
     
-    await onAdd({
+    await onSubjectAdded({
       subject_name: subjectName.trim(),
       total_lectures: total,
       attended_lectures: attended,
